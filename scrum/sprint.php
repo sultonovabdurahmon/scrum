@@ -1,101 +1,247 @@
+
 <?php
 require_once 'config.php';
 need_login();
+
 $sid = (int)($_GET['id'] ?? 0);
+
+function sprint_text($tg, $ru) {
+    global $current_language;
+    return $current_language === 'ru' ? $ru : $tg;
+}
+
+function sprint_status_text($status) {
+    $labels = [
+        'planned' => sprint_text('Банақшагирифташуда', 'Запланирован'),
+        'active' => sprint_text('Ҷорӣ', 'Активный'),
+        'closed' => sprint_text('Анҷомёфта', 'Завершён')
+    ];
+
+    return $labels[$status] ?? $status;
+}
+
+function sprint_task_status_text($status) {
+    $labels = [
+        'todo' => sprint_text('Барои иҷро', 'К выполнению'),
+        'in_progress' => sprint_text('Дар иҷро', 'В работе'),
+        'review' => sprint_text('Дар санҷиш', 'На проверке'),
+        'done' => sprint_text('Иҷрошуда', 'Выполнено')
+    ];
+
+    return $labels[$status] ?? $status;
+}
+
+function sprint_priority_text($priority) {
+    $labels = [
+        1 => sprint_text('Паст', 'Низкий'),
+        2 => sprint_text('Миёна', 'Средний'),
+        3 => sprint_text('Баланд', 'Высокий'),
+        4 => sprint_text('Ҳатмӣ', 'Критический')
+    ];
+
+    return $labels[$priority] ?? $priority;
+}
+
+function burndown_svg($labels, $ideal, $actual, $total) {
+    $W = 680;
+    $H = 320;
+    $L = 50;
+    $R = 20;
+    $T = 20;
+    $B = 50;
+
+    $n = count($labels);
+    $max = max($total, 1);
+
+    $X = function ($i) use ($n, $W, $L, $R) {
+        return $L + ($W - $L - $R) * $i / max($n - 1, 1);
+    };
+
+    $Y = function ($v) use ($max, $H, $T, $B) {
+        return $T + ($H - $T - $B) * (1 - $v / $max);
+    };
+
+    $svg = '<svg viewBox="0 0 ' . $W . ' ' . $H . '" class="chart" xmlns="http://www.w3.org/2000/svg">';
+
+    for ($k = 0; $k <= 5; $k++) {
+        $v = $max * $k / 5;
+        $y = round($Y($v), 1);
+
+        $svg .= '<line x1="' . $L . '" y1="' . $y . '" x2="' . ($W - $R) . '" y2="' . $y . '" stroke="#e5e7eb"/>';
+
+        $svg .= '<text x="' . ($L - 8) . '" y="' . ($y + 4) . '" text-anchor="end" font-size="11" fill="#6b7280">' . round($v, 1) . '</text>';
+    }
+
+    $step = max(1, (int)ceil($n / 12));
+
+    for ($i = 0; $i < $n; $i += $step) {
+        $svg .= '<text x="' . round($X($i), 1) . '" y="' . ($H - $B + 18) . '" text-anchor="middle" font-size="11" fill="#6b7280">' . e($labels[$i]) . '</text>';
+    }
+
+    $pi = [];
+
+    foreach ($ideal as $i => $v) {
+        $pi[] = round($X($i), 1) . ',' . round($Y($v), 1);
+    }
+
+    $svg .= '<polyline fill="none" stroke="#9ca3af" stroke-width="2" stroke-dasharray="6 4" points="' . implode(' ', $pi) . '"/>';
+
+    $pa = [];
+    $dots = '';
+
+    foreach ($actual as $i => $v) {
+        if ($v === null) continue;
+
+        $x = round($X($i), 1);
+        $y = round($Y($v), 1);
+
+        $pa[] = $x . ',' . $y;
+        $dots .= '<circle cx="' . $x . '" cy="' . $y . '" r="3.5" fill="#2563eb"/>';
+    }
+
+    if ($pa) {
+        $svg .= '<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="' . implode(' ', $pa) . '"/>' . $dots;
+    }
+
+    $idealLabel = sprint_text('Идеалӣ', 'Идеальный план');
+    $actualLabel = sprint_text('Воқеӣ (холҳои боқимонда)', 'Фактически (оставшиеся Story Points)');
+
+    $svg .= '<text x="' . ($L + 10) . '" y="' . ($H - 10) . '" font-size="12" fill="#9ca3af">--- ' . e($idealLabel) . '</text>';
+
+    $svg .= '<text x="' . ($L + 90) . '" y="' . ($H - 10) . '" font-size="12" fill="#2563eb">— ' . e($actualLabel) . '</text>';
+
+    return $svg . '</svg>';
+}
 
 $s = $pdo->prepare('SELECT * FROM sprints WHERE id=?');
 $s->execute([$sid]);
 $sprint = $s->fetch();
-if (!$sprint) die('Спринт ёфт нашуд');
+
+if (!$sprint) {
+    die(sprint_text('Спринт ёфт нашуд', 'Спринт не найден'));
+}
+
 $pid = (int)$sprint['project_id'];
 $role = need_member($pdo, $pid);
 $isSM = $role === 'scrum_master';
 
-function burndown_svg($labels, $ideal, $actual, $total) {
-    $W = 680; $H = 320; $L = 50; $R = 20; $T = 20; $B = 50;
-    $n = count($labels);
-    $max = max($total, 1);
-    $X = function ($i) use ($n, $W, $L, $R) { return $L + ($W - $L - $R) * $i / max($n - 1, 1); };
-    $Y = function ($v) use ($max, $H, $T, $B) { return $T + ($H - $T - $B) * (1 - $v / $max); };
-    $svg = '<svg viewBox="0 0 ' . $W . ' ' . $H . '" class="chart" xmlns="http://www.w3.org/2000/svg">';
-    for ($k = 0; $k <= 5; $k++) {
-        $v = $max * $k / 5;
-        $y = round($Y($v), 1);
-        $svg .= '<line x1="' . $L . '" y1="' . $y . '" x2="' . ($W - $R) . '" y2="' . $y . '" stroke="#e5e7eb"/>';
-        $svg .= '<text x="' . ($L - 8) . '" y="' . ($y + 4) . '" text-anchor="end" font-size="11" fill="#6b7280">' . round($v, 1) . '</text>';
-    }
-    $step = max(1, (int)ceil($n / 12));
-    for ($i = 0; $i < $n; $i += $step) {
-        $svg .= '<text x="' . round($X($i), 1) . '" y="' . ($H - $B + 18) . '" text-anchor="middle" font-size="11" fill="#6b7280">' . e($labels[$i]) . '</text>';
-    }
-    $pi = [];
-    foreach ($ideal as $i => $v) $pi[] = round($X($i), 1) . ',' . round($Y($v), 1);
-    $svg .= '<polyline fill="none" stroke="#9ca3af" stroke-width="2" stroke-dasharray="6 4" points="' . implode(' ', $pi) . '"/>';
-    $pa = []; $dots = '';
-    foreach ($actual as $i => $v) {
-        if ($v === null) continue;
-        $x = round($X($i), 1); $y = round($Y($v), 1);
-        $pa[] = $x . ',' . $y;
-        $dots .= '<circle cx="' . $x . '" cy="' . $y . '" r="3.5" fill="#2563eb"/>';
-    }
-    if ($pa) $svg .= '<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="' . implode(' ', $pa) . '"/>' . $dots;
-    $svg .= '<text x="' . ($L + 10) . '" y="' . ($H - 10) . '" font-size="12" fill="#9ca3af">--- Ideal</text>';
-    $svg .= '<text x="' . ($L + 90) . '" y="' . ($H - 10) . '" font-size="12" fill="#2563eb">— Воқеӣ (холҳои боқимонда)</text>';
-    return $svg . '</svg>';
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $a = $_POST['action'] ?? '';
+
     if (!$isSM) {
-        flash('err', 'Танҳо Scrum-master метавонад спринтро идора кунад');
+        flash('err', sprint_text(
+            'Танҳо Scrum-master метавонад спринтро идора кунад',
+            'Только Scrum-мастер может управлять спринтом'
+        ));
     }
 
-    // Илова кардани вазифа ба спринт — бо санҷиши иқтидор
+    // Добавление задачи в спринт с проверкой вместимости
     elseif ($a === 'add_task' && $sprint['status'] !== 'closed') {
         $q = $pdo->prepare('SELECT * FROM tasks WHERE id=? AND project_id=? AND sprint_id IS NULL');
         $q->execute([(int)($_POST['task_id'] ?? 0), $pid]);
         $t = $q->fetch();
-        if (!$t) flash('err', 'Вазифа ёфт нашуд');
+
+        if (!$t) {
+            flash('err', sprint_text(
+                'Вазифа ёфт нашуд',
+                'Задача не найдена'
+            ));
+        }
         else {
             $used = sprint_used($pdo, $sid);
-            if ($used + $t['points'] > $sprint['capacity'])
-                flash('err', "Иқтидор намерасад: дар спринт $used аз {$sprint['capacity']} хол банд аст, вазифа {$t['points']} хол мегирад");
+
+            if ($used + $t['points'] > $sprint['capacity']) {
+                flash('err', sprint_text(
+                    "Иқтидор намерасад: дар спринт $used аз {$sprint['capacity']} хол банд аст, вазифа {$t['points']} хол мегирад",
+                    "Недостаточно вместимости: в спринте занято $used из {$sprint['capacity']} Story Points, задача требует {$t['points']}."
+                ));
+            }
             else {
-                $pdo->prepare('UPDATE tasks SET sprint_id=?, status="todo", assignee_id=NULL, done_at=NULL WHERE id=?')->execute([$sid, $t['id']]);
-                flash('ok', 'Вазифа ба спринт илова шуд');
+                $pdo->prepare('UPDATE tasks SET sprint_id=?, status="todo", assignee_id=NULL, done_at=NULL WHERE id=?')
+                    ->execute([$sid, $t['id']]);
+
+                flash('ok', sprint_text(
+                    'Вазифа ба спринт илова шуд',
+                    'Задача добавлена в спринт'
+                ));
             }
         }
     }
     elseif ($a === 'remove_task' && $sprint['status'] === 'planned') {
-        $pdo->prepare('UPDATE tasks SET sprint_id=NULL WHERE id=? AND sprint_id=?')->execute([(int)$_POST['task_id'], $sid]);
-        flash('ok', 'Вазифа ба backlog баргашт');
+        $pdo->prepare('UPDATE tasks SET sprint_id=NULL WHERE id=? AND sprint_id=?')
+            ->execute([(int)$_POST['task_id'], $sid]);
+
+        flash('ok', sprint_text(
+            'Вазифа ба backlog баргашт',
+            'Задача возвращена в бэклог'
+        ));
     }
     elseif ($a === 'set_capacity' && $sprint['status'] === 'planned') {
         $cap = (int)($_POST['capacity'] ?? 0);
-        if ($cap < sprint_used($pdo, $sid)) flash('err', 'Иқтидор аз холҳои дар спринт бандшуда камтар шуда наметавонад');
+
+        if ($cap < sprint_used($pdo, $sid)) {
+            flash('err', sprint_text(
+                'Иқтидор аз холҳои дар спринт бандшуда камтар шуда наметавонад',
+                'Вместимость не может быть меньше уже занятых Story Points'
+            ));
+        }
         else {
-            $pdo->prepare('UPDATE sprints SET capacity=? WHERE id=?')->execute([$cap, $sid]);
-            flash('ok', 'Иқтидор нав шуд');
+            $pdo->prepare('UPDATE sprints SET capacity=? WHERE id=?')
+                ->execute([$cap, $sid]);
+
+            flash('ok', sprint_text(
+                'Иқтидор нав шуд',
+                'Вместимость обновлена'
+            ));
         }
     }
     elseif ($a === 'start' && $sprint['status'] === 'planned') {
         $c = $pdo->prepare('SELECT COUNT(*) FROM sprints WHERE project_id=? AND status="active"');
         $c->execute([$pid]);
-        if ($c->fetchColumn() > 0) flash('err', 'Дар лоиҳа аллакай спринти ҷорӣ ҳаст');
-        elseif (sprint_used($pdo, $sid) == 0) flash('err', 'Аввал ба спринт вазифа илова кунед');
+
+        if ($c->fetchColumn() > 0) {
+            flash('err', sprint_text(
+                'Дар лоиҳа аллакай спринти ҷорӣ ҳаст',
+                'В проекте уже есть активный спринт'
+            ));
+        }
+        elseif (sprint_used($pdo, $sid) == 0) {
+            flash('err', sprint_text(
+                'Аввал ба спринт вазифа илова кунед',
+                'Сначала добавьте задачи в спринт'
+            ));
+        }
         else {
-            $pdo->prepare('UPDATE sprints SET status="active" WHERE id=?')->execute([$sid]);
-            flash('ok', 'Спринт оғоз шуд');
+            $pdo->prepare('UPDATE sprints SET status="active" WHERE id=?')
+                ->execute([$sid]);
+
+            flash('ok', sprint_text(
+                'Спринт оғоз шуд',
+                'Спринт запущен'
+            ));
         }
     }
     elseif ($a === 'finish' && $sprint['status'] === 'active') {
         $total = sprint_used($pdo, $sid);
-        $pdo->prepare('UPDATE sprints SET status="closed", final_points=? WHERE id=?')->execute([$total, $sid]);
-        // вазифаҳои иҷронашуда ба backlog бармегарданд
-        $pdo->prepare('UPDATE tasks SET sprint_id=NULL, status="todo", assignee_id=NULL, done_at=NULL WHERE sprint_id=? AND status<>"done"')->execute([$sid]);
-        flash('ok', 'Спринт анҷом ёфт; вазифаҳои иҷронашуда ба backlog баргаштанд');
+
+        $pdo->prepare('UPDATE sprints SET status="closed", final_points=? WHERE id=?')
+            ->execute([$total, $sid]);
+
+        // Возвращаем незавершённые задачи в backlog
+        $pdo->prepare('UPDATE tasks SET sprint_id=NULL, status="todo", assignee_id=NULL, done_at=NULL WHERE sprint_id=? AND status<>"done"')
+            ->execute([$sid]);
+
+        flash('ok', sprint_text(
+            'Спринт анҷом ёфт; вазифаҳои иҷронашуда ба backlog баргаштанд',
+            'Спринт завершён, незавершённые задачи возвращены в бэклог'
+        ));
     }
-    else flash('err', 'Амал дар ин ҳолат имконнопазир аст');
+    else {
+        flash('err', sprint_text(
+            'Амал дар ин ҳолат имконнопазир аст',
+            'Это действие сейчас недоступно'
+        ));
+    }
 
     go("sprint.php?id=$sid");
 }
@@ -111,101 +257,265 @@ $bl = $pdo->prepare('SELECT * FROM tasks WHERE project_id=? AND sprint_id IS NUL
 $bl->execute([$pid]);
 $backlog = $bl->fetchAll();
 
-// Burndown
+// Burndown chart
 $showChart = $sprint['status'] !== 'planned';
+
 if ($showChart) {
     $total = $sprint['status'] === 'closed' ? (int)$sprint['final_points'] : $used;
+
     $start = new DateTime($sprint['start_date']);
     $end = new DateTime($sprint['end_date']);
+
     $n = min(max($start->diff($end)->days + 1, 2), 60);
     $today = date('Y-m-d');
-    $labels = []; $ideal = []; $actual = [];
+
+    $labels = [];
+    $ideal = [];
+    $actual = [];
+
     for ($i = 0; $i < $n; $i++) {
         $d = (clone $start)->modify("+$i day");
         $ds = $d->format('Y-m-d');
+
         $labels[] = $d->format('d.m');
         $ideal[] = round($total * (1 - $i / ($n - 1)), 2);
+
         if ($sprint['status'] === 'closed' || $ds <= $today) {
             $doneSum = 0;
-            foreach ($tasks as $t)
-                if ($t['status'] === 'done' && $t['done_at'] && substr($t['done_at'], 0, 10) <= $ds) $doneSum += $t['points'];
+
+            foreach ($tasks as $t) {
+                if ($t['status'] === 'done' && $t['done_at'] && substr($t['done_at'], 0, 10) <= $ds) {
+                    $doneSum += $t['points'];
+                }
+            }
+
             $actual[] = $total - $doneSum;
-        } else $actual[] = null;
+        }
+        else {
+            $actual[] = null;
+        }
     }
 }
 
 $title = $sprint['name'];
 include 'header.php';
 ?>
-<p><a href="project.php?id=<?= $pid ?>">← Ба лоиҳа</a></p>
-<h1><?= e($sprint['name']) ?> <span class="badge s-<?= $sprint['status'] ?>"><?= e(SPRINT_STATUS[$sprint['status']]) ?></span></h1>
-<p><?= e($sprint['goal']) ?><br>
-   <?= e($sprint['start_date']) ?> — <?= e($sprint['end_date']) ?></p>
+
+<p>
+    <a href="project.php?id=<?= $pid ?>">
+        ← <?= sprint_text('Ба лоиҳа', 'К проекту') ?>
+    </a>
+</p>
+
+<h1>
+    <?= e($sprint['name']) ?>
+
+    <span class="badge s-<?= e($sprint['status']) ?>">
+        <?= e(sprint_status_text($sprint['status'])) ?>
+    </span>
+</h1>
+
+<p>
+    <?= e($sprint['goal']) ?>
+    <br>
+    <?= e($sprint['start_date']) ?> — <?= e($sprint['end_date']) ?>
+</p>
 
 <div class="card">
-  <h2>Иқтидори даста</h2>
-  <div class="bar"><div style="width:<?= $sprint['capacity'] > 0 ? min(100, round($used / $sprint['capacity'] * 100)) : 0 ?>%"></div></div>
-  <p><b><?= $used ?></b> аз <b><?= (int)$sprint['capacity'] ?></b> хол банд аст · озод: <b><?= max($free, 0) ?></b></p>
+    <h2><?= sprint_text('Иқтидори даста', 'Вместимость команды') ?></h2>
 
-  <?php if ($isSM && $sprint['status'] !== 'closed'): ?>
-    <div class="row">
-      <?php if ($sprint['status'] === 'planned'): ?>
-        <form method="post" class="row">
-          <input type="hidden" name="action" value="set_capacity">
-          <label>Иқтидор <input type="number" name="capacity" min="1" value="<?= (int)$sprint['capacity'] ?>"></label>
-          <button class="btn small">Нав кардан</button>
-        </form>
-        <form method="post"><input type="hidden" name="action" value="start"><button class="btn">Оғози спринт</button></form>
-      <?php else: ?>
-        <form method="post" onsubmit="return confirm('Спринт анҷом дода шавад?')"><input type="hidden" name="action" value="finish"><button class="btn danger">Анҷоми спринт</button></form>
-      <?php endif; ?>
+    <div class="bar">
+        <div style="width:<?= $sprint['capacity'] > 0 ? min(100, round($used / $sprint['capacity'] * 100)) : 0 ?>%"></div>
     </div>
-  <?php endif; ?>
+
+    <p>
+        <b><?= $used ?></b>
+        <?= sprint_text('аз', 'из') ?>
+        <b><?= (int)$sprint['capacity'] ?></b>
+        <?= sprint_text('хол банд аст', 'Story Points занято') ?>
+
+        ·
+
+        <?= sprint_text('озод', 'свободно') ?>:
+        <b><?= max($free, 0) ?></b>
+    </p>
+
+    <?php if ($isSM && $sprint['status'] !== 'closed'): ?>
+        <div class="row">
+
+            <?php if ($sprint['status'] === 'planned'): ?>
+
+                <form method="post" class="row">
+                    <input type="hidden" name="action" value="set_capacity">
+
+                    <label>
+                        <?= sprint_text('Иқтидор', 'Вместимость') ?>
+
+                        <input
+                            type="number"
+                            name="capacity"
+                            min="1"
+                            value="<?= (int)$sprint['capacity'] ?>"
+                        >
+                    </label>
+
+                    <button class="btn small">
+                        <?= sprint_text('Нав кардан', 'Обновить') ?>
+                    </button>
+                </form>
+
+                <form method="post">
+                    <input type="hidden" name="action" value="start">
+
+                    <button class="btn">
+                        <?= sprint_text('Оғози спринт', 'Запустить спринт') ?>
+                    </button>
+                </form>
+
+            <?php else: ?>
+
+                <form
+                    method="post"
+                    onsubmit="return confirm('<?= e(sprint_text('Спринт анҷом дода шавад?', 'Завершить спринт?')) ?>')"
+                >
+                    <input type="hidden" name="action" value="finish">
+
+                    <button class="btn danger">
+                        <?= sprint_text('Анҷоми спринт', 'Завершить спринт') ?>
+                    </button>
+                </form>
+
+            <?php endif; ?>
+
+        </div>
+    <?php endif; ?>
 </div>
 
 <?php if ($isSM && $sprint['status'] !== 'closed'): ?>
-<div class="card">
-  <h2>Илова аз backlog</h2>
-  <?php if ($backlog): ?>
-  <form method="post" class="row">
-    <input type="hidden" name="action" value="add_task">
-    <label>Вазифа
-      <select name="task_id">
-        <?php foreach ($backlog as $t): $fit = $t['points'] <= $free; ?>
-          <option value="<?= $t['id'] ?>" <?= $fit ? '' : 'disabled' ?>>[<?= e(PRIO[$t['priority']]) ?>] <?= e($t['title']) ?> — <?= (int)$t['points'] ?> хол<?= $fit ? '' : ' (намеғунҷад)' ?></option>
-        <?php endforeach; ?>
-      </select>
-    </label>
-    <button class="btn">Илова ба спринт</button>
-  </form>
-  <?php else: ?><p>Backlog холӣ аст.</p><?php endif; ?>
-</div>
+    <div class="card">
+        <h2><?= sprint_text('Илова аз backlog', 'Добавить из бэклога') ?></h2>
+
+        <?php if ($backlog): ?>
+
+            <form method="post" class="row">
+                <input type="hidden" name="action" value="add_task">
+
+                <label>
+                    <?= sprint_text('Вазифа', 'Задача') ?>
+
+                    <select name="task_id">
+                        <?php foreach ($backlog as $t): $fit = $t['points'] <= $free; ?>
+
+                            <option
+                                value="<?= $t['id'] ?>"
+                                <?= $fit ? '' : 'disabled' ?>
+                            >
+                                [<?= e(sprint_priority_text($t['priority'])) ?>]
+                                <?= e($t['title']) ?>
+                                — <?= (int)$t['points'] ?>
+
+                                <?= sprint_text('хол', 'SP') ?>
+
+                                <?= $fit ? '' : ' (' . sprint_text('намеғунҷад', 'не помещается') . ')' ?>
+                            </option>
+
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <button class="btn">
+                    <?= sprint_text('Илова ба спринт', 'Добавить в спринт') ?>
+                </button>
+            </form>
+
+        <?php else: ?>
+
+            <p><?= sprint_text('Backlog холӣ аст.', 'Бэклог пуст.') ?></p>
+
+        <?php endif; ?>
+    </div>
 <?php endif; ?>
 
 <div class="card">
-  <h2>Тахтаи спринт</h2>
-  <div class="board">
-    <?php foreach (STATUS as $k => $label): ?>
-      <div class="col">
-        <h3><?= e($label) ?></h3>
-        <?php foreach ($tasks as $t): if ($t['status'] !== $k) continue; ?>
-          <div class="task p-b<?= $t['priority'] ?>">
-            <a href="task.php?id=<?= $t['id'] ?>"><?= e($t['title']) ?></a>
-            <small><?= (int)$t['points'] ?> хол · <?= $t['an'] ? e($t['an']) : 'бе иҷрокунанда' ?> · <?= round($t['spent_minutes'] / 60, 1) ?> соат</small>
-            <?php if ($isSM && $sprint['status'] === 'planned'): ?>
-              <form method="post"><input type="hidden" name="action" value="remove_task"><input type="hidden" name="task_id" value="<?= $t['id'] ?>"><button class="btn small danger">Баровардан</button></form>
-            <?php endif; ?>
-          </div>
+    <h2><?= sprint_text('Тахтаи спринт', 'Доска спринта') ?></h2>
+
+    <div class="board">
+
+        <?php foreach (STATUS as $k => $label): ?>
+
+            <div class="col">
+                <h3><?= e(sprint_task_status_text($k)) ?></h3>
+
+                <?php foreach ($tasks as $t): if ($t['status'] !== $k) continue; ?>
+
+                    <div class="task p-b<?= $t['priority'] ?>">
+
+                        <a href="task.php?id=<?= $t['id'] ?>">
+                            <?= e($t['title']) ?>
+                        </a>
+
+                        <small>
+                            <?= (int)$t['points'] ?>
+                            <?= sprint_text('хол', 'SP') ?>
+
+                            ·
+
+                            <?= $t['an']
+                                ? e($t['an'])
+                                : sprint_text('бе иҷрокунанда', 'Без исполнителя') ?>
+
+                            ·
+
+                            <?= round($t['spent_minutes'] / 60, 1) ?>
+                            <?= sprint_text('соат', 'ч.') ?>
+                        </small>
+
+                        <?php if ($isSM && $sprint['status'] === 'planned'): ?>
+
+                            <form method="post">
+                                <input type="hidden" name="action" value="remove_task">
+                                <input type="hidden" name="task_id" value="<?= $t['id'] ?>">
+
+                                <button class="btn small danger">
+                                    <?= sprint_text('Баровардан', 'Убрать') ?>
+                                </button>
+                            </form>
+
+                        <?php endif; ?>
+
+                    </div>
+
+                <?php endforeach; ?>
+
+            </div>
+
         <?php endforeach; ?>
-      </div>
-    <?php endforeach; ?>
-  </div>
+
+    </div>
 </div>
 
 <div class="card">
-  <h2>Диаграммаи боқимондаи кор (Burndown)</h2>
-  <?php if ($showChart): echo burndown_svg($labels, $ideal, $actual, $total); else: ?>
-    <p>Диаграмма баъд аз оғози спринт пайдо мешавад.</p>
-  <?php endif; ?>
+    <h2>
+        <?= sprint_text(
+            'Диаграммаи боқимондаи кор (Burndown)',
+            'Диаграмма оставшейся работы (Burndown)'
+        ) ?>
+    </h2>
+
+    <?php if ($showChart): ?>
+
+        <?php echo burndown_svg($labels, $ideal, $actual, $total); ?>
+
+    <?php else: ?>
+
+        <p>
+            <?= sprint_text(
+                'Диаграмма баъд аз оғози спринт пайдо мешавад.',
+                'Диаграмма появится после запуска спринта.'
+            ) ?>
+        </p>
+
+    <?php endif; ?>
 </div>
+
 <?php include 'footer.php'; ?>
