@@ -1,0 +1,101 @@
+@startuml er-diagram
+title ASTAT SCRUM: модели мантиқии пойгоҳи додаҳо (ER)
+hide circle
+skinparam linetype ortho
+skinparam entity {
+  BackgroundColor #F8F8FC
+  BorderColor #5145A5
+  FontColor #202033
+}
+skinparam ArrowColor #5145A5
+
+entity users {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * username : VARCHAR(50) <<UQ>>
+  * email : VARCHAR(120) <<UQ>>
+  * password_hash : VARCHAR(255)
+  * full_name : VARCHAR(120)
+  * created_at : DATETIME
+}
+
+entity projects {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * name : VARCHAR(150)
+  description : TEXT
+  * owner_id : INT UNSIGNED <<FK>>
+  * created_at : DATETIME
+}
+
+entity project_members {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * project_id : INT UNSIGNED <<FK>>
+  * user_id : INT UNSIGNED <<FK>>
+  * role : ENUM
+  * joined_at : DATETIME
+  --
+  UNIQUE(project_id, user_id)
+}
+
+entity sprints {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * project_id : INT UNSIGNED <<FK>>
+  * name : VARCHAR(100)
+  goal : TEXT
+  start_date : DATE
+  end_date : DATE
+  * status : ENUM
+  * created_at : DATETIME
+}
+
+entity tasks {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * project_id : INT UNSIGNED <<FK>>
+  sprint_id : INT UNSIGNED <<FK>>
+  * created_by : INT UNSIGNED <<FK>>
+  assigned_to : INT UNSIGNED <<FK>>
+  * title : VARCHAR(200)
+  description : TEXT
+  * status : ENUM
+  * priority : TINYINT
+  story_points : TINYINT
+  * created_at : DATETIME
+  * updated_at : DATETIME
+}
+
+entity comments {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * task_id : INT UNSIGNED <<FK>>
+  * user_id : INT UNSIGNED <<FK>>
+  * body : TEXT
+  * created_at : DATETIME
+}
+
+entity time_entries {
+  * id : INT UNSIGNED <<PK>>
+  --
+  * task_id : INT UNSIGNED <<FK>>
+  * user_id : INT UNSIGNED <<FK>>
+  * minutes : SMALLINT UNSIGNED
+  * work_date : DATE
+  note : VARCHAR(255)
+}
+
+users ||--o{ projects : owner_id
+users ||--o{ project_members
+projects ||--o{ project_members
+projects ||--o{ sprints
+projects ||--o{ tasks
+sprints |o--o{ tasks
+users ||--o{ tasks : created_by
+users |o--o{ tasks : assigned_to
+tasks ||--o{ comments
+users ||--o{ comments
+tasks ||--o{ time_entries
+users ||--o{ time_entries
+@enduml
