@@ -1,0 +1,24 @@
+@startuml deployment
+title ASTAT SCRUM: диаграммаи ҷойгиркунӣ
+left to right direction
+skinparam linetype ortho
+
+node "Компютери корбар" as client {
+  artifact "Браузер\nChrome / Firefox / Edge" as browser
+}
+
+node "Linux VDS\nUbuntu 24.04" as server {
+  node "Nginx" as nginx {
+    artifact "Конфигуратсияи Nginx\nnginx.conf" as nconf
+  }
+  node "PHP-FPM 8.x" as php {
+    artifact "ASTAT SCRUM\nPHP application" as app
+    artifact "config.php\n.env (танзимот)" as config
+  }
+  database "MariaDB / MySQL\nastat_scrum\nutf8mb4, InnoDB" as db
+}
+
+browser --> nginx : HTTPS :443
+nginx --> php : FastCGI\nUnix socket / TCP 9000
+php --> db : PDO MySQL\nTCP 3306
+@enduml
