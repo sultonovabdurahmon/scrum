@@ -1,0 +1,36 @@
+@startuml sequence-task-status
+title ASTAT SCRUM: изменение статуса задачи участником команды
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #5145CD
+  LifeLineBorderColor #6D5AE6
+  ParticipantBorderColor #6D5AE6
+  ParticipantBackgroundColor #F5F3FF
+}
+actor "Участник команды\n(member)" as M
+boundary "Браузер" as B
+control "task.php\n(обработчик запроса)" as C
+entity "MySQL\n(таблица tasks)" as Repo
+database "База данных\nscrum" as DB
+
+M -> B : Открывает задачу
+B -> C : GET task.php?id=42
+C -> Repo : Получить задачу и данные проекта
+Repo -> DB : SELECT task WHERE id = 42
+DB --> Repo : Данные задачи
+Repo --> C : Задача и назначенный исполнитель
+C --> B : HTML-страница задачи
+M -> B : Выбирает новый статус
+B -> C : POST task.php?id=42\naction=update_status, status=in_progress
+C -> C : Проверить сессию, роль,\nактивный спринт и исполнителя
+alt Пользователь имеет право изменить статус
+  C -> Repo : Обновить статус задачи
+  Repo -> DB : UPDATE tasks SET status='in_progress'\nWHERE id=42
+  DB --> Repo : 1 строка изменена
+  Repo --> C : Успешное обновление
+  C --> B : Перенаправление на task.php?id=42\n(статус обновлён)
+else Нет прав или спринт не активен
+  C --> B : Изменение отклонено\n(сообщение об ошибке)
+end
+B --> M : Показывает результат
+@enduml

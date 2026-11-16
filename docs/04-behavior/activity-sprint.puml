@@ -1,0 +1,51 @@
+@startuml activity-sprint
+title ASTAT SCRUM: планирование и запуск спринта
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F5F3FF
+  BorderColor #6D5AE6
+  DiamondBackgroundColor #EDE9FE
+  DiamondBorderColor #6D5AE6
+}
+|Scrum Master|
+start
+:Открыть проект;
+:Создать спринт;
+:Указать название, даты и ёмкость;
+|Система|
+:Проверить корректность дат и ёмкости;
+while (Данные некорректны?) is (да)
+  |Scrum Master|
+  :Исправить даты или ёмкость;
+  |Система|
+  :Повторно проверить данные;
+endwhile (нет)
+:Сохранить спринт;
+|Scrum Master|
+:Открыть Product Backlog;
+:Выбрать задачу для спринта;
+|Система|
+:Проверить доступную ёмкость;
+if (Задача помещается в ёмкость?) then (да)
+  :Добавить задачу в спринт;
+else (нет)
+  |Scrum Master|
+  :Выбрать другую задачу\nили увеличить ёмкость;
+  |Система|
+  :Повторно проверить план;
+endif
+|Scrum Master|
+if (В спринте есть задачи?) then (да)
+  :Нажать «Запустить спринт»;
+  |Система|
+  :Установить статус active;
+  :Зафиксировать дату начала;
+else (нет)
+  :Вернуться к выбору задач;
+  |Система|
+  :Оставить спринт в статусе planning;
+endif
+|Scrum Master|
+:Просмотреть состояние спринта;
+stop
+@enduml

@@ -1,0 +1,70 @@
+@startuml use-case
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #F5F3FF
+  BorderColor #6D5AE6
+  ArrowColor #5145CD
+}
+title ASTAT SCRUM: диаграмма вариантов использования
+
+actor "Product Owner\n(product_owner)" as PO
+actor "Scrum Master\n(scrum_master)" as SM
+actor "Участник команды\n(member)" as M
+
+rectangle "ASTAT SCRUM" {
+  usecase "Войти в систему" as UC1
+  usecase "Создать проект" as UC2
+  usecase "Управлять Product Backlog" as UC3
+  usecase "Создать и редактировать задачу" as UC4
+  usecase "Создать спринт" as UC5
+  usecase "Планировать задачи спринта" as UC6
+  usecase "Запустить / завершить спринт" as UC7
+  usecase "Изменить статус задачи" as UC8
+  usecase "Добавить комментарий" as UC9
+  usecase "Зафиксировать затраченное время" as UC10
+  usecase "Проверить учётные данные" as UC11
+  usecase "Проверить права доступа" as UC12
+  usecase "Указать Story Points и приоритет" as UC13
+  usecase "Просмотреть Burndown Chart" as UC14
+}
+PO --> UC1
+PO --> UC2
+PO --> UC3
+PO --> UC4
+PO --> UC14
+SM --> UC1
+SM --> UC5
+SM --> UC6
+SM --> UC7
+SM --> UC14
+M --> UC1
+M --> UC8
+M --> UC9
+M --> UC10
+M --> UC14
+UC1 ..> UC11 : <<include>>
+UC4 ..> UC13 : <<include>>
+UC9 ..> UC8 : <<extend>>
+UC10 ..> UC8 : <<extend>>
+note bottom of UC2
+  ФТ-03
+end note
+note bottom of UC3
+  ФТ-04, ФТ-05
+end note
+note bottom of UC5
+  ФТ-06
+end note
+note bottom of UC6
+  ФТ-07
+end note
+note bottom of UC7
+  ФТ-08
+end note
+note bottom of UC8
+  ФТ-09
+end note
+@enduml
