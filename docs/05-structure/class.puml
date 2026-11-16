@@ -1,0 +1,148 @@
+@startuml class
+title ASTAT SCRUM: диаграмма классов
+skinparam classAttributeIconSize 0
+hide empty members
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "Доменная модель" {
+  class User <<entity>> {
+    +id: int
+    +name: string
+    +email: string
+    -passwordHash: string
+    +createdAt: datetime
+  }
+
+  class Project <<entity>> {
+    +id: int
+    +name: string
+    +description: ?string
+    +ownerId: int
+    +createdAt: datetime
+  }
+
+  class ProjectMember <<entity>> {
+    +id: int
+    +projectId: int
+    +userId: int
+    +role: ProjectRole
+  }
+
+  class Task <<entity>> {
+    +id: int
+    +projectId: int
+    +sprintId: ?int
+    +title: string
+    +description: ?string
+    +status: TaskStatus
+    +priority: int
+    +storyPoints: ?int
+    +assigneeId: ?int
+  }
+
+  class Sprint <<entity>> {
+    +id: int
+    +projectId: int
+    +name: string
+    +startDate: ?date
+    +endDate: ?date
+    +capacity: int
+    +status: SprintStatus
+  }
+
+  class Comment <<entity>> {
+    +id: int
+    +taskId: int
+    +userId: int
+    +body: string
+    +createdAt: datetime
+  }
+
+  class TimeEntry <<entity>> {
+    +id: int
+    +taskId: int
+    +userId: int
+    +minutes: int
+    +description: ?string
+    +createdAt: datetime
+  }
+
+  enum ProjectRole {
+    product_owner
+    scrum_master
+    member
+  }
+
+  enum TaskStatus {
+    todo
+    in_progress
+    review
+    done
+  }
+
+  enum SprintStatus {
+    planning
+    active
+    completed
+  }
+}
+
+User "1" -- "0..*" Project : владеет >
+Project "1" *-- "0..*" ProjectMember : состав команды
+User "1" -- "0..*" ProjectMember : состоит в >
+Project "1" *-- "0..*" Task : backlog задач
+Project "1" *-- "0..*" Sprint : спринты
+Sprint "0..1" o-- "0..*" Task : включает задачи
+User "0..1" -- "0..*" Task : назначен >
+Task "1" *-- "0..*" Comment : комментарии
+User "1" -- "0..*" Comment : автор >
+Task "1" *-- "0..*" TimeEntry : учёт времени
+User "1" -- "0..*" TimeEntry : фиксирует >
+
+ProjectMember ..> ProjectRole
+Task ..> TaskStatus
+Sprint ..> SprintStatus
+
+package "Прикладной код (PHP)" {
+  class TaskPageController <<controller>> {
+    -db: Database
+    +show(taskId: int): void
+    +addComment(taskId: int, body: string): void
+    +updateStatus(taskId: int, status: TaskStatus): bool
+    +logTime(taskId: int, minutes: int): bool
+  }
+
+  class TaskRepository <<repository>> {
+    -db: Database
+    +findById(taskId: int): ?Task
+    +updateStatus(taskId: int, status: TaskStatus): bool
+    +addComment(taskId: int, userId: int, body: string): bool
+    +addTimeEntry(taskId: int, userId: int, minutes: int): bool
+  }
+
+  class Database <<infrastructure>> {
+    -pdo: PDO
+    +connect(): PDO
+    +getConnection(): PDO
+  }
+}
+
+TaskPageController --> TaskRepository : использует
+TaskRepository --> Database : выполняет SQL через
+TaskRepository ..> Task : читает/изменяет
+TaskRepository ..> Comment : создаёт
+TaskRepository ..> TimeEntry : создаёт
+
+note bottom of TaskPageController
+  Логическая роль обработчика страницы task.php.
+  В текущей версии проекта обработка и SQL могут
+  находиться непосредственно в task.php.
+end note
+
+note bottom of TaskRepository
+  Отдельный слой репозитория показан как
+  архитектурная модель разделения ответственности,
+  а не утверждение о наличии отдельного файла.
+end note
+@enduml

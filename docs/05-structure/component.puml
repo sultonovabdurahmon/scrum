@@ -1,0 +1,54 @@
+@startuml component
+title ASTAT SCRUM: диаграмма компонентов (трёхуровневая архитектура)
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+node "Клиент" as Client {
+  [Браузер\nHTML / CSS / JavaScript] as Browser
+}
+
+node "Веб-сервер\nApache + PHP (XAMPP)" as Server {
+  package "Уровень представления" as Presentation {
+    [PHP-страницы\nlogin.php, projects.php,\nproject.php, sprint.php, task.php] as Pages
+    [HTML-шаблоны\nи элементы интерфейса] as Views
+  }
+
+  package "Уровень бизнес-логики" as Logic {
+    [Обработчики запросов\n(логика PHP-страниц)] as Controllers
+    [Проверка сессии и ролей\nconfig.php / user()] as Auth
+    [Правила Scrum\nстатусы, приоритеты,\nёмкость спринта] as Rules
+  }
+
+  package "Уровень доступа к данным" as DataAccess {
+    [PDO / SQL-запросы\nconfig.php и PHP-страницы] as DataLayer
+  }
+}
+
+database "MySQL\nБаза данных scrum" as DB
+
+Browser --> Pages : HTTP GET / POST
+Pages --> Controllers : вызов PHP-обработчика
+Controllers --> Auth : проверка сессии / роли
+Controllers --> Rules : проверка бизнес-правил
+Controllers --> DataLayer : запрос данных
+DataLayer --> DB : PDO / SQL (MySQL)
+Controllers --> Views : формирование ответа
+Views --> Browser : HTML
+
+note right of DataLayer
+  В текущей реализации запросы PDO
+  могут выполняться непосредственно
+  в PHP-страницах. Отдельный Repository
+  можно выделить при рефакторинге.
+end note
+
+legend right
+  **MVC (логическое соответствие текущему PHP-проекту)**
+  Model = правила Scrum + PDO/SQL и данные MySQL
+  View = HTML-разметка, встроенная в PHP-страницы
+  Controller = обработчики PHP-страниц
+  Front Controller / Router как отдельные классы
+  в текущей версии не выделены.
+endlegend
+@enduml
